@@ -1,5 +1,7 @@
 # VibeKeep 0.1 architecture
 
+This document describes the implemented 0.1 runtime. Its current npm and local-filesystem constraints are not the intended product boundary. The [environment-agnostic architecture plan](environment-agnostic-plan.md) defines how to extract a general core and support code, design, documents, and remote or native application workspaces through adapters.
+
 ## Implemented flow
 
 ```mermaid

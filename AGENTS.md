@@ -4,3 +4,5 @@
 - Keep VibeKeep's agent responses and generated documentation in English.
 - Preserve Unicode support when changing text handling or search behavior.
 - Run `npm run check` and `npm test` after changing application code.
+- Repository and product language rules do not prescribe the language of development discussions; follow the user's conversation preference.
+- Keep the core independent of the target language, build system, and authoring application. Treat ecosystem-specific features as adapters and distinguish planned capabilities from implemented ones.

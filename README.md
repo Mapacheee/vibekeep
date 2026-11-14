@@ -4,6 +4,8 @@
 
 A vibe coding framework with a terminal chat and local project memory. Talk, change your mind, and keep building; VibeKeep preserves decisions and records its changes.
 
+VibeKeep's intended scope includes any accessible AI-assisted creation environment: code in any language, visual design, documents, notebooks, and mixed projects. The core is being designed around workspace and capability adapters. The current release is the local CLI implementation described below, with text-file tools and npm execution; broader native integrations are planned in the [environment-agnostic architecture plan](docs/environment-agnostic-plan.md). Node.js is VibeKeep's runtime requirement, not a required technology for the projects it works on.
+
 This is the first working release, **0.1.0**. It can adopt an existing repository, chat with a model, read and edit files, run authorized npm scripts, and restore memory in another session. You do not need to write a specification to get started.
 
 ## Getting started

@@ -14,7 +14,18 @@
 - [x] Cross-process persistence and export/import with conflict rejection.
 - [x] Deterministic tests without a paid API dependency.
 
-## Next increment — See the project running
+## Next increment — Establish an environment-agnostic core
+
+- Extract workspace, artifact, capability, action, and evidence contracts from the current local CLI.
+- Move local file access and npm-specific behavior behind adapters while preserving current commands.
+- Support a plain workspace without requiring Git, a package manifest, a build command, or tests.
+- Prove the architecture with a Java project and a design-only folder.
+- Add binary asset metadata and explicit limits for native artifact editing.
+- Design a service boundary so an existing agent or authoring app can use memory without a second chat.
+
+See the [environment-agnostic plan](environment-agnostic-plan.md) for current gaps, migration steps, integration contracts, and acceptance criteria.
+
+## Following increments — Preview and integration
 
 - Development-server management: start, check readiness, display logs, and stop.
 - Authorization by project profile without repeated prompts for an already granted scope.
@@ -26,7 +37,7 @@
 
 - Tree-sitter and language adapters; LSP for specific semantic queries.
 - Worktrees for complete variants and memory with explicit branch inheritance and conflicts.
-- React/Vite, API, CLI, and Python profiles with verified commands.
+- Domain and ecosystem adapters with verified capabilities, including code, design, documents, and notebooks; examples are not an exhaustive support list.
 - Official-documentation research tied to repository versions.
 - Better multilingual retrieval; evaluate embeddings against the text-search baseline.
 - An MCP server for external agents, with integration limits declared per client.
