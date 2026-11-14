@@ -1,0 +1,39 @@
+{
+  "name": "vibekeep",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build freely. Keep the context. A local, memory-first AI coding framework.",
+  "type": "module",
+  "bin": {
+    "vibekeep": "dist/src/cli.js"
+  },
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24.13.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "start": "node dist/src/cli.js",
+    "dev": "npm run build && node dist/src/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mapacheee/vibekeep.git"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.105",
+    "@ai-sdk/openai-compatible": "^3.0.92",
+    "ai": "^7.0.173",
+    "ignore": "^7.0.14",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  }
+}
