@@ -5,8 +5,8 @@ import { fixture } from './helpers.js';
 
 test('decisions survive a new database connection, with authority and provenance', t => {
   const { root, store } = fixture(t);
-  const source = store.message('session', 'main', 'user', 'Usa un diseño claro');
-  const decision = store.remember({ statement: 'Usar diseño claro', area: 'ui.theme' }, 'main', 'user_explicit', source);
+  const source = store.message('session', 'main', 'user', 'Use a light theme');
+  const decision = store.remember({ statement: 'Use a light theme', area: 'ui.theme' }, 'main', 'user_explicit', source);
   const restored = new Store(root);
   try { assert.deepEqual(restored.decisions('main'), [decision]); assert.equal(decision.status, 'accepted'); assert.equal(decision.source_id, source); }
   finally { restored.close(); }
@@ -19,12 +19,12 @@ test('agent proposals cannot silently become explicit accepted choices', t => {
   assert.equal(store.accept(decision.id, 'main').authority, 'user_explicit');
 });
 
-test('branch memory is isolated and FTS search handles Spanish and punctuation', t => {
+test('branch memory is isolated and FTS search handles Unicode and punctuation', t => {
   const { store } = fixture(t);
-  store.remember({ statement: 'Navegación clara para móvil', area: 'ui.mobile' }, 'main', 'user_explicit');
+  store.remember({ statement: 'Use a light theme for the caf\u00e9 menu', area: 'ui.menu' }, 'main', 'user_explicit');
   store.remember({ statement: 'Dark layout' }, 'experiment', 'user_explicit');
-  assert.equal(store.decisions('main', 'móvil OR "').length, 1);
-  assert.equal(store.decisions('experiment', 'móvil').length, 0);
+  assert.equal(store.decisions('main', 'caf\u00e9 OR "').length, 1);
+  assert.equal(store.decisions('experiment', 'caf\u00e9').length, 0);
   assert.equal(store.decisions('main').length, 1);
 });
 

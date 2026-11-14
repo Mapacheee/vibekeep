@@ -10,9 +10,9 @@ test('CLI adoption, persistent memory, and search work in separate processes wit
   const run = (...args: string[]): string => execFileSync(process.execPath, [cli, ...args, '--cwd', root, '--json'], { encoding: 'utf8', timeout: 15000 });
   const adopted = JSON.parse(run('adopt'));
   assert.equal(adopted.files.length, 0);
-  const remembered = JSON.parse(run('remember', 'Mantener el menú', '--area', 'ui.navigation'));
+  const remembered = JSON.parse(run('remember', 'Keep the navigation menu', '--area', 'ui.navigation'));
   assert.equal(remembered.status, 'accepted');
-  assert.equal(JSON.parse(run('memory', 'menú'))[0].statement, 'Mantener el menú');
+  assert.equal(JSON.parse(run('memory', 'menu'))[0].statement, 'Keep the navigation menu');
 });
 
 test('CLI help is usable without initialization and invalid commands fail', () => {

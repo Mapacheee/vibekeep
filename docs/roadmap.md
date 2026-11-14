@@ -1,37 +1,37 @@
 # Roadmap
 
-## 0.1 — Primer ciclo funcional
+## 0.1 — First working loop
 
-- [x] CLI con inicialización automática y chat en la terminal.
-- [x] Adopción de proyectos vacíos y existentes sin ejecutar scripts.
-- [x] Inventario de paquetes, comandos, instrucciones y cambios por hashes.
-- [x] SQLite, FTS5, decisiones por rama y procedencia explícita.
-- [x] Chat con Anthropic o un proveedor compatible configurable.
-- [x] Lectura paginada, sustitución parcial y escritura con precondiciones.
-- [x] Snapshots por escritura y undo que detecta cambios posteriores.
-- [x] Scripts npm autorizados, timeouts, salida acotada y resultados.
-- [x] Resultados marcados no vigentes cuando cambia el código indexado.
-- [x] Persistencia entre procesos y export/import con rechazo de conflictos.
-- [x] Pruebas deterministas sin depender de una API de pago.
+- [x] CLI with automatic initialization and terminal chat.
+- [x] Adoption of empty and existing projects without executing scripts.
+- [x] Inventory of packages, commands, instructions, and changes using hashes.
+- [x] SQLite, FTS5, branch-scoped decisions, and explicit provenance.
+- [x] Chat with Anthropic or a configurable compatible provider.
+- [x] Paginated reads, partial replacements, and writes with preconditions.
+- [x] Per-write snapshots and undo that detects later edits.
+- [x] Authorized npm scripts, timeouts, bounded output, and results.
+- [x] Results marked out of date when indexed code changes.
+- [x] Cross-process persistence and export/import with conflict rejection.
+- [x] Deterministic tests without a paid API dependency.
 
-## Próximo incremento — Ver el proyecto funcionando
+## Next increment — See the project running
 
-- Administración de servidores de desarrollo: iniciar, verificar disponibilidad, mostrar logs y detener.
-- Autorización por perfil de proyecto, sin repetir preguntas para el mismo alcance concedido.
-- Diffs de contenido en la conversación y agrupación de escrituras en experimentos.
-- Aceptación conversacional de decisiones con evidencia y evaluación de ambigüedades.
-- Recuperación guiada de acciones inciertas y cancelación coordinada de procesos.
+- Development-server management: start, check readiness, display logs, and stop.
+- Authorization by project profile without repeated prompts for an already granted scope.
+- Content diffs in the conversation and grouping writes into experiments.
+- Conversational decision acceptance with evidence and ambiguity evaluation.
+- Guided recovery of uncertain actions and coordinated process cancellation.
 
-## Después — Comprender y ampliar
+## Later — Understand and extend
 
-- Tree-sitter y adaptadores por lenguaje; LSP para consultas semánticas específicas.
-- Worktrees para variantes completas y memoria con herencia y conflictos de ramas explícitos.
-- Perfiles de React/Vite, APIs, CLI y Python con comandos comprobados.
-- Investigación de documentación oficial ligada a la versión del repo.
-- Mejor recuperación multilingüe; evaluar embeddings frente al baseline textual.
-- Servidor MCP para agentes externos, con límites de integración declarados por cliente.
-- Panel opcional con conversación, preview y timeline.
+- Tree-sitter and language adapters; LSP for specific semantic queries.
+- Worktrees for complete variants and memory with explicit branch inheritance and conflicts.
+- React/Vite, API, CLI, and Python profiles with verified commands.
+- Official-documentation research tied to repository versions.
+- Better multilingual retrieval; evaluate embeddings against the text-search baseline.
+- An MCP server for external agents, with integration limits declared per client.
+- An optional panel with conversation, preview, and timeline.
 
-## Criterio de prioridad
+## Prioritization
 
-Cada incremento debe mejorar este recorrido: abrir un repo real, cambiar algo mediante conversación, comprobarlo, cerrar y retomar con memoria correcta. La interacción no debe exigir convertir cada idea en documentos o completar fases de planificación.
+Every increment should improve this journey: open a real repository, change something through conversation, verify it, close the session, and resume with accurate memory. The interaction should not require turning every idea into documents or completing planning phases.

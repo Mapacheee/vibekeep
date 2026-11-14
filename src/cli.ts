@@ -74,7 +74,7 @@ async function main(): Promise<void> {
       if (args.values['allow-scripts'] || command === 'run') return true;
       if (!stdin.isTTY) return false;
       const answer = await getReadline().question(`\n${description}\nRun this script? [y/N] `);
-      return /^(?:y|yes|s|si|sí)$/i.test(answer.trim());
+      return /^(?:y|yes)$/i.test(answer.trim());
     };
     if (['init', 'adopt', 'status'].includes(command)) {
       const value = adopt(store);

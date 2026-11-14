@@ -1,60 +1,60 @@
-# Arquitectura de VibeKeep 0.1
+# VibeKeep 0.1 architecture
 
-## Flujo implementado
+## Implemented flow
 
 ```mermaid
 flowchart TD
-  CLI[CLI y chat] --> Repo[Inventario incremental por hashes]
-  CLI --> Agent[Agente con AI SDK]
-  Agent --> Context[Contexto limitado por rama]
-  Context --> Memory[SQLite y FTS5]
+  CLI[CLI and chat] --> Repo[Incremental inventory using hashes]
+  CLI --> Agent[Agent using AI SDK]
+  Agent --> Context[Branch-scoped context]
+  Context --> Memory[SQLite and FTS5]
   Context --> Repo
-  Agent --> Tools[Herramientas validadas con Zod]
-  Tools --> Files[Lecturas paginadas y edición con precondiciones]
-  Tools --> Scripts[Scripts npm autorizados y acotados]
-  Files --> Journal[Diario de acciones y snapshots]
+  Agent --> Tools[Tools validated with Zod]
+  Tools --> Files[Paginated reads and edits with preconditions]
+  Tools --> Scripts[Authorized and bounded npm scripts]
+  Files --> Journal[Action journal and snapshots]
   Scripts --> Journal
   Journal --> Memory
 ```
 
-## Módulos
+## Modules
 
-- `cli.ts`: comandos, conversación, configuración y ciclo de vida del bloqueo.
-- `agent.ts`: adaptadores de proveedor, contexto, límites y herramientas. El modelo propone; las herramientas aplican reglas.
-- `repo.ts`: enumeración Git o filesystem, paquetes, scripts, instrucciones y hashes. No ejecuta el contenido durante la adopción.
-- `paths.ts`: límites de ruta, exclusiones, Git ignore y rechazo de symlinks.
-- `store.ts`: eventos, decisiones, mensajes, inventarios, acciones y export/import.
-- `execution.ts`: cambios de archivos con snapshots, undo y scripts con evidencia.
-- `lock.ts`: un escritor CLI local por proyecto.
+- `cli.ts`: commands, conversation, configuration, and lock lifecycle.
+- `agent.ts`: provider adapters, context, limits, and tools. The model proposes; tools enforce rules. Responses, generated documentation, and decision summaries use English.
+- `repo.ts`: Git or filesystem enumeration, packages, scripts, instructions, and hashes. Adoption does not execute project contents.
+- `paths.ts`: path boundaries, exclusions, Git ignore rules, and symlink rejection.
+- `store.ts`: events, decisions, messages, inventories, actions, and export/import.
+- `execution.ts`: file changes with snapshots, undo, and scripts with evidence.
+- `lock.ts`: one local CLI writer per project.
 
-## Decisiones de implementación
+## Implementation decisions
 
-Se usa `node:sqlite`, verificado con FTS5 en el runtime de referencia, en lugar de añadir un binding nativo externo en este primer corte. El lockfile fija la combinación de dependencias probada. El requisito mínimo de Node evita runtimes anteriores a los usados para las APIs incorporadas.
+The first release uses `node:sqlite`, verified with FTS5 in the reference runtime, instead of adding an external native binding. The lockfile pins the tested dependency combination. The minimum Node version excludes runtimes older than those required for the built-in APIs.
 
-Los hechos detectados se almacenan como inventario; no se convierten en decisiones históricas del usuario. Las decisiones tienen los estados `proposed`, `accepted` y `superseded`. Solo una acción explícita del operador acepta una decisión. Una cita de conversación aporta procedencia a una propuesta, no garantiza que la interpretación del modelo sea correcta.
+Detected facts are stored as inventory; they do not become historical user decisions. Decisions have `proposed`, `accepted`, and `superseded` states. Only an explicit operator action accepts a decision. A conversation quote establishes a proposal's provenance but does not guarantee that the model's interpretation is correct.
 
-SQLite es el almacén local de autoridad. Una transacción aplica cambios de decisión y eventos juntos. El índice FTS permite buscar decisiones; los hashes detectan cambios del código sin tener que pedirle al modelo que relea todo.
+SQLite is the authoritative local store. Transactions apply decision changes and events together. The FTS index supports decision search; hashes detect code changes without asking the model to reread everything.
 
-Un evento de ejecución conserva su resultado y huella del inventario. Es evidencia del comando que se ejecutó, no una prueba general de la aplicación. Los cambios de archivos propios se registran antes de escribir; los fallos de resultado incierto no se reejecutan al cargar el proyecto.
+Execution records preserve results and the inventory fingerprint. They provide evidence of a specific command, not a general application test. Own file changes are journaled before writing; actions with uncertain outcomes are not replayed when the project loads.
 
-El contexto tiene límites de mensajes, caracteres de memoria, rutas e instrucciones. Las lecturas de archivos son paginadas, las herramientas de recuperación pueden expandir contexto y el agente tiene hasta doce pasos por turno. El límite de caracteres no equivale a una garantía exacta de tokens para cada modelo. El consumo informado por el proveedor se conserva cuando está disponible.
+Context is bounded by message count, memory characters, paths, and instruction excerpts. File reads are paginated, retrieval tools can expand context, and the agent has up to twelve steps per turn. Character limits do not guarantee an exact token budget for every model. Provider-reported usage is preserved when available.
 
-## Límites conocidos
+## Known limitations
 
-- Se detectan manifiestos de varios lenguajes; el entendimiento inicial es inventario y lectura dirigida, no un grafo semántico completo.
-- No hay aún Tree-sitter, LSP, embeddings, XState, servidor MCP ni panel web.
-- Se permite código local del proyecto únicamente mediante scripts npm declarados y autorizados. Los scripts pueden tener efectos externos; el runtime no proporciona aislamiento del sistema operativo.
-- Las precondiciones de archivos no son un bloqueo transaccional frente a un editor externo. Se requieren integración más profunda o worktrees para reducir aún más esa carrera.
-- La memoria por rama evita recuperar decisiones ajenas a esa rama, pero no implementa herencia automática entre ramas ni almacén compartido entre worktrees.
-- No hay despliegue, instalación automática de dependencias ni administración persistente de procesos de desarrollo.
-- El import rechaza conflictos en un ID existente. No intenta resolverlos con el modelo ni tratar el último archivo importado como más verdadero.
+- Manifests from several languages are detected; initial understanding consists of inventory and targeted reads, not a complete semantic graph.
+- Tree-sitter, LSP, embeddings, XState, an MCP server, and a web panel are not implemented yet.
+- Local project code executes only through declared and authorized npm scripts. Scripts can have external effects; the runtime does not provide operating-system isolation.
+- File preconditions are not a transactional lock against external editors. Deeper integration or worktrees are needed to reduce that race further.
+- Branch-scoped memory avoids retrieving decisions from other branches but does not implement automatic branch inheritance or a shared worktree store.
+- Deployment, automatic dependency installation, and persistent development-process management are not implemented.
+- Imports reject conflicting existing IDs. They do not ask the model to resolve conflicts or treat the last imported file as more authoritative.
 
-## Fuentes de las integraciones
+## Integration references
 
-- [AI SDK: herramientas](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling).
-- [AI SDK: proveedores compatibles](https://ai-sdk.dev/providers/openai-compatible-providers).
-- [Zod: contratos y validación](https://zod.dev/).
+- [AI SDK: tools](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling).
+- [AI SDK: compatible providers](https://ai-sdk.dev/providers/openai-compatible-providers).
+- [Zod: schemas and validation](https://zod.dev/).
 - [SQLite: FTS5](https://www.sqlite.org/fts5.html).
 - [SQLite: WAL](https://www.sqlite.org/wal.html).
 
-La implementación se valida con compilación y pruebas locales. Las propiedades de estas bibliotecas no sustituyen las comprobaciones de integración del framework.
+The implementation is verified through compilation and local tests. Library capabilities do not replace framework integration checks.
