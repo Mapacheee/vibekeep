@@ -16,7 +16,7 @@ export type Decision = {
   created_at: string;
 };
 
-export type FileFact = { path: string; hash: string; bytes: number };
+export type FileFact = { path: string; hash: string; bytes: number; label?: string; kind?: 'text' | 'image' | 'design' | 'document' | 'binary'; mediaType?: string; representation?: 'text' | 'binary' };
 export type PackageFact = {
   path: string;
   name: string;

@@ -5,6 +5,7 @@ import ignore from 'ignore';
 import { accessiblePath, excluded, hash, projectPath } from './paths.js';
 import type { Inventory, PackageFact } from './types.js';
 import type { Store } from './store.js';
+import { artifactType } from './artifacts.js';
 
 export function git(root: string, args: string[]): string | null {
   try {
@@ -19,9 +20,14 @@ export function branch(root: string): string {
 }
 
 function filesIn(root: string, limit: number): { paths: string[]; truncated: boolean } {
+  const generated = new Set<string>();
+  if (existsSync(join(root, 'package.json'))) { generated.add('dist'); generated.add('build'); }
+  if (existsSync(join(root, 'pom.xml')) || existsSync(join(root, 'Cargo.toml'))) generated.add('target');
+  if (existsSync(join(root, 'build.gradle')) || existsSync(join(root, 'build.gradle.kts'))) generated.add('build');
+  const omitted = (path: string): boolean => excluded(path) || generated.has(path.replaceAll('\\', '/').split('/')[0]!);
   const listed = git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z']);
   if (listed !== null) {
-    const paths = [...new Set(listed.split('\0').filter(p => p && !excluded(p)))].sort();
+    const paths = [...new Set(listed.split('\0').filter(p => p && !omitted(p)))].sort();
     return { paths: paths.slice(0, limit), truncated: paths.length > limit };
   }
   const rules = ignore();
@@ -35,7 +41,7 @@ function filesIn(root: string, limit: number): { paths: string[]; truncated: boo
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const full = join(directory, entry.name);
       const path = relative(root, full).replaceAll('\\', '/');
-      if (excluded(path) || entry.isSymbolicLink() || active.some(rule => rule.matcher.ignores(relative(rule.base, full).replaceAll('\\', '/') + (entry.isDirectory() ? '/' : '')))) continue;
+      if (omitted(path) || entry.isSymbolicLink() || active.some(rule => rule.matcher.ignores(relative(rule.base, full).replaceAll('\\', '/') + (entry.isDirectory() ? '/' : '')))) continue;
       if (paths.length >= limit) { truncated = true; return; }
       if (entry.isDirectory()) walk(full, active);
       else if (entry.isFile()) paths.push(path);
@@ -86,11 +92,16 @@ export function inspect(root: string, previous?: Inventory): Inventory {
       const full = projectPath(root, path);
       const stat = lstatSync(full);
       if (!stat.isFile()) continue;
-      if (stat.size > 256 * 1024 || totalBytes + stat.size > 32 * 1024 * 1024) { truncated = true; continue; }
+      if (stat.size > 16 * 1024 * 1024 || totalBytes + stat.size > 64 * 1024 * 1024) {
+        truncated = true;
+        files.push({ path, hash: `metadata:${stat.size}:${stat.mtimeMs}`, bytes: stat.size, ...artifactType(path, true) });
+        continue;
+      }
       const content = readFileSync(full);
       totalBytes += content.length;
-      if (content.includes(0)) continue;
-      files.push({ path, hash: hash(content), bytes: content.length });
+      const binary = content.includes(0) || /\.(png|jpe?g|webp|gif|pdf|fig|sketch|psd|blend|ai|zip|woff2?)$/i.test(path);
+      files.push({ path, hash: hash(content), bytes: content.length, ...artifactType(path, binary) });
+      if (binary) continue;
       if (basename(path) === 'package.json') {
         const fact = packageFact(root, path);
         if (fact) packages.push(fact);
@@ -101,7 +112,7 @@ export function inspect(root: string, previous?: Inventory): Inventory {
   files.sort((a, b) => a.path.localeCompare(b.path));
   const old = new Map(previous?.files.map(f => [f.path, f.hash]) ?? []);
   const current = new Set(files.map(f => f.path));
-  const markers = files.filter(f => /(?:^|\/)(?:pyproject\.toml|requirements\.txt|Cargo\.toml|go\.mod|Dockerfile|compose\.ya?ml)$/.test(f.path)).map(f => f.path);
+  const markers = files.filter(f => /(?:^|\/)(?:pyproject\.toml|requirements\.txt|Cargo\.toml|go\.mod|pom\.xml|build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?|Makefile|Dockerfile|compose\.ya?ml)$/.test(f.path)).map(f => f.path);
   return {
     root, branch: branch(root), head: git(root, ['rev-parse', 'HEAD']),
     fingerprint: hash(files.map(f => `${f.path}\0${f.hash}`).join('\n')),
@@ -122,7 +133,7 @@ export function adopt(store: Store): Inventory {
 export function inventorySummary(value: Inventory): string {
   const packages = value.packages.map(p => `- ${p.path}: ${p.technologies.join(', ') || 'JavaScript/Node'}; ${p.manager}; scripts: ${Object.keys(p.scripts).join(', ') || 'none'}`);
   return [
-    `Project: ${value.root}`, `Branch: ${value.branch}`, `Indexed: ${value.files.length} text files${value.truncated ? ' (partial scan)' : ''}`,
+    `Workspace: ${value.root}`, `Scope: ${value.branch}`, `Indexed: ${value.files.length} artifacts${value.truncated ? ' (partial content scan)' : ''}`,
     ...packages, ...value.markers.map(m => `- Detected manifest: ${m}`),
     `Changes since previous scan: ${value.changed.length}; removed: ${value.removed.length}`,
     'Script detection is not proof of a successful run. Existing implementation does not imply historical user approval.',

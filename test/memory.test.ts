@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Store } from '../src/store.js';
 import { fixture } from './helpers.js';
+import { readdirSync } from 'node:fs';
 
 test('decisions survive a new database connection, with authority and provenance', t => {
   const { root, store } = fixture(t);
@@ -63,4 +64,16 @@ test('uncertain actions remain visible after reconnecting and never execute on l
   const restored = new Store(root);
   try { assert.equal(restored.pending()[0]?.id, id); }
   finally { restored.close(); }
+});
+
+test('workspace extension migration preserves version 0.1 decisions and creates a consistent backup', t => {
+  const { root, store } = fixture(t);
+  const decision = store.remember({ statement: 'Preserve the original project intent' }, 'main', 'user_explicit');
+  store.db.exec("DELETE FROM meta WHERE key = 'workspace_extensions'; DROP TABLE experiments; DROP TABLE experiment_actions; DROP TABLE decision_resources; DROP TABLE preferences;");
+  const upgraded = new Store(root);
+  try {
+    assert.equal(upgraded.decisions('main')[0]?.id, decision.id);
+    assert.ok(readdirSync(upgraded.local).some(name => name.startsWith('before-workspaces-')));
+    assert.ok(upgraded.beginExperiment('main', 'Migration works'));
+  } finally { upgraded.close(); }
 });

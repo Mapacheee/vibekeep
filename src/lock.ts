@@ -3,13 +3,13 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 /** One CLI writer per local project; leave uncertain actions in the journal after a crash. */
-export function acquireLock(local: string): () => void {
-  const path = join(local, 'session.lock');
+export function acquireLock(local: string, filename = 'session.lock'): () => void {
+  const path = join(local, filename);
   const token = randomUUID();
   if (existsSync(path)) {
     let pid: number;
     try { pid = Number(JSON.parse(readFileSync(path, 'utf8')).pid); }
-    catch { throw new Error('Unreadable session lock. Inspect .vibe/local/session.lock before removing it.'); }
+    catch { throw new Error(`Unreadable lock. Inspect ${path} before removing it.`); }
     if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid session lock; inspect it before removing it.');
     let alive = true;
     try { process.kill(pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false; }

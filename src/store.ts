@@ -22,7 +22,7 @@ export class Store {
     this.root = resolve(root);
     const directory = join(this.root, '.vibe');
     this.local = join(directory, 'local');
-    for (const path of [directory, this.local, join(directory, 'project.json'), join(directory, '.gitignore'), join(this.local, 'memory.sqlite')]) {
+    for (const path of [directory, this.local, join(directory, 'project.json'), join(directory, '.gitignore'), join(this.local, 'memory.sqlite'), join(this.local, 'memory.sqlite-wal'), join(this.local, 'memory.sqlite-shm')]) {
       if (existsSync(path) && lstatSync(path).isSymbolicLink()) throw new Error(`VibeKeep metadata cannot be a symlink: ${path}`);
     }
     mkdirSync(this.local, { recursive: true });
@@ -33,6 +33,11 @@ export class Store {
     if (!existsSync(projectFile)) writeFileSync(projectFile, JSON.stringify(this.project, null, 2) + '\n', { flag: 'wx' });
     const ignoreFile = join(directory, '.gitignore');
     if (!existsSync(ignoreFile)) writeFileSync(ignoreFile, 'local/\n', { flag: 'wx' });
+    else {
+      const contents = readFileSync(ignoreFile, 'utf8');
+      const last = contents.split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith('#')).at(-1);
+      if (!['local/', '/local/'].includes(last ?? '')) writeFileSync(ignoreFile, `${contents.trimEnd()}\n/local/\n`);
+    }
     this.db = new DatabaseSync(join(this.local, 'memory.sqlite'));
     this.db.exec(`
       PRAGMA journal_mode=WAL;
@@ -49,6 +54,21 @@ export class Store {
     const version = this.db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version');
     if (version && version.value !== '1') { this.db.close(); throw new Error('Unsupported memory schema version.'); }
     this.db.prepare('INSERT OR IGNORE INTO meta VALUES (?, ?)').run('schema_version', '1');
+    const extensions = this.db.prepare('SELECT value FROM meta WHERE key = ?').get('workspace_extensions');
+    if (!extensions) {
+      const hasHistory = Number(this.db.prepare('SELECT COUNT(*) AS n FROM events').get()?.n ?? 0) > 0;
+      if (hasHistory) {
+        const backup = join(this.local, `before-workspaces-${Date.now()}.sqlite`);
+        this.db.prepare('VACUUM INTO ?').run(backup);
+      }
+      this.transaction(() => {
+        this.db.exec(`CREATE TABLE IF NOT EXISTS experiments (id TEXT PRIMARY KEY, scope TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS experiment_actions (experiment_id TEXT NOT NULL, action_id TEXT PRIMARY KEY);
+          CREATE TABLE IF NOT EXISTS decision_resources (decision_id TEXT NOT NULL, workspace_id TEXT NOT NULL, resource_id TEXT NOT NULL, revision TEXT);
+          CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+        this.db.prepare('INSERT INTO meta VALUES (?, ?)').run('workspace_extensions', '1');
+      });
+    }
   }
 
   close(): void { this.db.close(); }
@@ -114,16 +134,66 @@ export class Store {
   }
 
   saveInventory(value: Inventory): void {
+    const previous = this.inventory(value.branch);
     this.transaction(() => {
       this.db.prepare('INSERT OR REPLACE INTO inventories VALUES (?, ?)').run(value.branch, JSON.stringify(value));
-      this.event('repository.observed', value.branch, { fingerprint: value.fingerprint, files: value.files.length, changed: value.changed, removed: value.removed, truncated: value.truncated });
+      if (previous?.fingerprint !== value.fingerprint) this.event('workspace.observed', value.branch, { fingerprint: value.fingerprint, files: value.files.length, changed: value.changed, removed: value.removed, truncated: value.truncated });
     });
   }
 
   action(scope: string, kind: string, payload: unknown): string {
     const id = randomUUID();
     this.db.prepare('INSERT INTO actions VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, scope, kind, 'running', JSON.stringify(payload), null, new Date().toISOString());
+    const active = this.preference('active_experiment');
+    if (active) {
+      const experiment = this.db.prepare("SELECT id FROM experiments WHERE id = ? AND scope = ? AND status = 'active'").get(active, scope);
+      if (experiment) this.db.prepare('INSERT INTO experiment_actions VALUES (?, ?)').run(active, id);
+    }
     return id;
+  }
+
+  preference(key: string): string | undefined {
+    const row = this.db.prepare('SELECT value FROM preferences WHERE key = ?').get(key);
+    return row ? String(row.value) : undefined;
+  }
+
+  setPreference(key: string, value: string): void {
+    this.db.prepare('INSERT OR REPLACE INTO preferences VALUES (?, ?)').run(key, value);
+  }
+
+  messages(scope: string): Record<string, unknown>[] {
+    return this.db.prepare('SELECT id, role, content, created_at FROM messages WHERE scope = ? ORDER BY rowid DESC LIMIT 100').all(scope).reverse().map(row => ({ ...row }));
+  }
+
+  timeline(): Record<string, unknown>[] {
+    return this.db.prepare('SELECT * FROM events ORDER BY rowid DESC LIMIT 100').all().map(row => ({ ...row, payload: JSON.parse(String(row.payload)) }));
+  }
+
+  experiments(scope: string): Record<string, unknown>[] {
+    return this.db.prepare('SELECT * FROM experiments WHERE scope = ? ORDER BY rowid DESC').all(scope).map(row => ({ ...row }));
+  }
+
+  beginExperiment(scope: string, name: string): string {
+    if (!name.trim() || name.length > 200) throw new Error('An experiment name must contain 1–200 characters.');
+    const active = this.preference('active_experiment');
+    if (active && this.db.prepare("SELECT id FROM experiments WHERE id = ? AND status = 'active'").get(active)) throw new Error('Finish the active experiment first.');
+    const id = randomUUID();
+    this.transaction(() => {
+      this.db.prepare('INSERT INTO experiments VALUES (?, ?, ?, ?, ?)').run(id, scope, name.trim(), 'active', new Date().toISOString());
+      this.setPreference('active_experiment', id);
+      this.event('experiment.started', scope, { id, name });
+    });
+    return id;
+  }
+
+  finishExperiment(id: string, scope: string, status: 'accepted' | 'discarded'): void {
+    this.transaction(() => {
+      const row = this.db.prepare("SELECT id FROM experiments WHERE id = ? AND scope = ? AND status = 'active'").get(id, scope);
+      if (!row) throw new Error('Active experiment not found in this scope.');
+      this.db.prepare('UPDATE experiments SET status = ? WHERE id = ?').run(status, id);
+      this.setPreference('active_experiment', '');
+      this.event(`experiment.${status}`, scope, { id });
+    });
   }
 
   finish(id: string, status: string, result: unknown): void {

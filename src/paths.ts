@@ -5,8 +5,8 @@ import { spawnSync } from 'node:child_process';
 import ignore from 'ignore';
 
 const excludedDirectories = new Set([
-  '.git', '.vibe', 'node_modules', 'dist', 'build', 'coverage', '.next',
-  '.venv', 'venv', '__pycache__', 'vendor', 'target', '.cache',
+  '.git', '.vibe', 'node_modules', 'coverage', '.next',
+  '.venv', 'venv', '__pycache__', 'vendor', '.cache',
 ]);
 const privateNames = /^(?:\.env(?:\..*)?|\.npmrc|\.pypirc|credentials(?:\..*)?|id_(?:rsa|ed25519)(?:\..*)?)$/i;
 const privateExtensions = /\.(?:pem|key|p12|pfx|sqlite|sqlite3|db|log)$/i;

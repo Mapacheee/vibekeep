@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>VibeKeep</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar" aria-label="Workspace files">
+    <div class="brand">VibeKeep</div>
+    <div class="sidebar-label">Workspaces <button id="open-workspace" class="icon-button" aria-label="Open workspace" title="Open workspace">+</button></div>
+    <nav id="workspaces" aria-label="Workspaces"></nav>
+    <div class="section-label file-heading">Files <button class="icon-button" id="new-file" aria-label="Create file" title="Create file">+</button></div>
+    <input class="search" id="file-search" type="search" placeholder="Filter files" aria-label="Filter files">
+    <nav id="files" class="file-tree" aria-label="Resource files"></nav>
+  </aside>
+  <div class="application">
+    <header class="topbar">
+      <button class="button mobile-menu" id="menu-button" aria-expanded="false" aria-controls="sidebar">Files</button>
+      <div class="breadcrumbs"><strong id="workspace-title">Loading…</strong><span class="scope-badge" id="scope"></span></div>
+      <div class="topbar-actions">
+        <button id="model-button" class="button model-button"><span id="model-label">Set up model</span></button>
+        <details class="workspace-menu" id="workspace-menu">
+          <summary aria-label="Workspace actions">⋯</summary>
+          <div class="workspace-menu-items">
+            <button id="refresh-button" type="button">Refresh workspace</button>
+            <button id="external-agent-button" type="button">Connect external agent</button>
+          </div>
+        </details>
+      </div>
+    </header>
+    <div class="mobile-views" role="group" aria-label="Workspace view">
+      <button type="button" data-view="chat" aria-pressed="true">Chat</button>
+      <button type="button" data-view="inspector" aria-pressed="false">Workspace</button>
+    </div>
+    <main data-view="chat">
+      <section class="conversation">
+        <div class="conversation-heading"><h1>Chat</h1></div>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <div id="approval" class="approval hidden"></div>
+        <div id="experiment-bar" class="experiment-bar hidden"></div>
+        <div class="composer-wrap">
+          <div id="attachment" class="attachment hidden"></div>
+          <form id="composer" class="composer">
+            <label class="sr-only" for="prompt">Your message</label>
+            <textarea id="prompt" placeholder="Describe what you want to make or change…" rows="3"></textarea>
+            <div class="composer-footer">
+              <div class="composer-tools">
+                <button type="button" class="composer-action" id="attach-image" title="Attach the selected image">Attach image</button>
+                <button type="button" class="composer-action" id="experiment-button">New experiment</button>
+              </div>
+              <button id="send-button" class="button primary" type="submit" aria-label="Send message">Send</button>
+              <button id="stop-button" class="button danger hidden" type="button">Stop</button>
+            </div>
+          </form>
+          <div class="composer-hint"><span id="operation-status" role="status"></span><span>Shift + Enter for a new line</span></div>
+        </div>
+      </section>
+      <section class="inspector" aria-label="Workspace inspector">
+        <div class="inspector-tabs" role="tablist" aria-label="Workspace tools">
+          <button type="button" id="tab-preview" data-tab="preview" role="tab" aria-selected="true">Preview</button>
+          <button type="button" id="tab-editor" data-tab="editor" role="tab" aria-selected="false" tabindex="-1">Editor</button>
+          <button type="button" id="tab-memory" data-tab="memory" role="tab" aria-selected="false" tabindex="-1">Memory</button>
+          <button type="button" id="tab-tasks" data-tab="tasks" role="tab" aria-selected="false" tabindex="-1">Tasks</button>
+          <button type="button" id="tab-changes" data-tab="changes" role="tab" aria-selected="false" tabindex="-1">Changes</button>
+          <button type="button" id="tab-activity" data-tab="activity" role="tab" aria-selected="false" tabindex="-1">Activity</button>
+        </div>
+        <div id="panel" class="panel" role="tabpanel" aria-labelledby="tab-preview" tabindex="0"></div>
+        <div class="inspector-status"><span id="resource-status"></span><span id="connection-status"></span></div>
+      </section>
+    </main>
+  </div>
+  <dialog id="workspace-dialog" aria-labelledby="workspace-dialog-title">
+    <form id="workspace-form">
+      <div class="dialog-heading">
+        <h2 id="workspace-dialog-title">Open workspace</h2>
+        <button type="button" class="icon-button" data-close aria-label="Close dialog">×</button>
+      </div>
+      <label>Folder path<input id="workspace-path" autofocus required placeholder="C:\projects\my-project or /path/to/project"></label>
+      <div class="browse-toolbar">
+        <button type="button" class="button quiet" id="browse-parent">Parent folder</button>
+        <button type="button" class="button quiet" id="browse-button">Browse folder</button>
+      </div>
+      <div id="directory-list" class="directory-list"></div>
+      <div class="dialog-actions">
+        <button type="button" class="button" id="connect-application">Connect an application</button>
+        <button class="button primary" type="submit">Open workspace</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="settings-dialog" aria-labelledby="settings-dialog-title">
+    <form id="settings-form">
+      <div class="dialog-heading">
+        <h2 id="settings-dialog-title">Model settings</h2>
+        <button type="button" class="icon-button" data-close aria-label="Close dialog">×</button>
+      </div>
+      <p>Choose a model that supports tool calls.</p>
+      <label>Provider<select id="provider"><option value="compatible">OpenAI-compatible endpoint</option><option value="anthropic">Anthropic</option></select></label>
+      <label>Model ID<input id="model-id" autofocus required placeholder="Your tool-capable model ID"></label>
+      <label id="endpoint-field">API endpoint<input id="endpoint" type="url" placeholder="http://localhost:1234/v1"></label>
+      <label>API key <span class="optional">optional for local models</span><input id="api-key" type="password" autocomplete="off" placeholder="Kept only in this running session"></label>
+      <label class="checkbox-label"><input type="checkbox" id="clear-key">Clear the current key</label>
+      <div class="notice">Keys stay in server memory and are never saved to the repository, browser storage, or project memory.</div>
+      <div class="dialog-actions">
+        <button class="button primary" type="submit">Save connection</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="text-dialog" aria-labelledby="text-title">
+    <form id="text-form">
+      <div class="dialog-heading">
+        <h2 id="text-title"></h2>
+        <button type="button" class="icon-button" data-close aria-label="Close dialog">×</button>
+      </div>
+      <label id="text-label">Name<input id="text-input" autofocus required></label>
+      <div class="dialog-actions">
+        <button class="button primary" type="submit" id="text-submit">Create</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="task-dialog" aria-labelledby="task-dialog-title">
+    <form id="task-form">
+      <div class="dialog-heading">
+        <h2 id="task-dialog-title">Add task</h2>
+        <button type="button" class="icon-button" data-close aria-label="Close dialog">×</button>
+      </div>
+      <p>Tasks run with your local user permissions.</p>
+      <div class="form-grid">
+        <label>Task ID<input id="task-id" autofocus required placeholder="export-assets"></label>
+        <label>Label<input id="task-label" required placeholder="Export design assets"></label>
+      </div>
+      <label>Executable<input id="task-command" required placeholder="python, java, a renderer, or an absolute path"></label>
+      <label>Arguments (JSON array)<textarea id="task-args" rows="2">[]</textarea></label>
+      <div class="form-grid">
+        <label>Working directory<input id="task-cwd" value="."></label>
+        <label>Operation<select id="task-mode"><option value="check">Check / validate</option><option value="action">Action / export</option><option value="server">Persistent server</option></select></label>
+      </div>
+      <label>Preview URL <span class="optional">server only, optional</span><input id="task-url" placeholder="http://127.0.0.1:3000"></label>
+      <div class="dialog-actions">
+        <button type="submit" class="button primary">Register task</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="connector-dialog" aria-labelledby="connector-dialog-title">
+    <form id="connector-form">
+      <div class="dialog-heading">
+        <h2 id="connector-dialog-title">Connect application</h2>
+        <button type="button" class="icon-button" data-close aria-label="Close dialog">×</button>
+      </div>
+      <p>Enter the address of a running VibeKeep adapter.</p>
+      <label>Connector endpoint<input type="url" id="connector-url" autofocus required placeholder="http://127.0.0.1:4450"></label>
+      <label>Access key <span class="optional">if required by the adapter</span><input type="password" id="connector-key" autocomplete="off"></label>
+      <div class="notice">The access key stays in this session.</div>
+      <div class="dialog-actions">
+        <button class="button primary" type="submit">Connect</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="operation-dialog" aria-labelledby="operation-title">
+    <form id="operation-form">
+      <div class="dialog-heading">
+        <h2 id="operation-title">Run operation</h2>
+        <button type="button" class="icon-button" data-close aria-label="Close dialog">×</button>
+      </div>
+      <p id="operation-description"></p>
+      <div id="operation-fields"></div>
+      <div class="dialog-actions">
+        <button class="button primary" type="submit">Run operation</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="integration-dialog" aria-labelledby="integration-dialog-title">
+    <div class="dialog-heading">
+      <h2 id="integration-dialog-title">Connect external agent</h2>
+      <button type="button" class="icon-button" data-close aria-label="Close dialog">×</button>
+    </div>
+    <p>Add this MCP configuration to your agent to share this workspace.</p>
+    <label for="integration-client">Client</label>
+    <select id="integration-client">
+        <option value="claude">Claude Code</option>
+        <option value="opencode">OpenCode 2</option>
+        <option value="opencode-v1">OpenCode 1</option>
+        <option value="antigravity">Antigravity</option>
+        <option value="codex">Codex</option>
+    </select>
+    <label class="checkbox-label"><input id="integration-writes" type="checkbox">Allow text-resource editing</label>
+    <label class="checkbox-label"><input id="integration-tasks" type="checkbox">Allow registered task execution</label>
+    <pre class="code-output" id="integration-config"></pre>
+    <div class="notice">Keep this configuration private. Its access token expires when VibeKeep restarts.</div>
+    <div class="dialog-actions">
+      <button class="button primary" id="copy-integration">Copy configuration</button>
+    </div></dialog>
+  <div id="toast" class="toast hidden" role="status"></div>
+</body>
+</html>

@@ -11,11 +11,18 @@ import { adopt, branch, inventorySummary } from './repo.js';
 import { Store } from './store.js';
 import type { Decision } from './types.js';
 
-const HELP = `VibeKeep 0.1.0 — Build freely. Keep the context.
+const HELP = `VibeKeep 0.2.0 — Build freely. Keep the context.
 
 Usage: vibekeep [command] [text] [--cwd <project>] [--json]
 
-  (no command), chat [path]  Open the terminal chat; initialize automatically
+  (no command), ui [path]    Open the local graphical workspace (--port <number>)
+  chat [path]                Open the terminal chat; initialize automatically
+  mcp [path]                 Start an MCP memory/resource server for an external host
+  open <client>              Open claude, opencode, antigravity or codex in this project
+  config <client>            Print the client's workspace MCP settings
+  team [help]                Coordinate separate chats and working copies
+  tasks                      List actual workspace tasks and availability
+  task <id>                  Run a registered task (--allow-tasks for MCP execution)
   init [path], adopt [path] Inspect an existing or empty project; never run code
   status                    Rescan files and show detected stack and changes
   remember <text>            Save an explicit accepted decision (--area <name>)
@@ -29,7 +36,8 @@ Usage: vibekeep [command] [text] [--cwd <project>] [--json]
   export                    Print portable decision memory as JSON
   import <file>             Import same-project memory, rejecting conflicts
 
-Options: --cwd <path>, --json, --allow-scripts, --help, --version
+Options: --cwd <path>, --json, --allow-scripts, --allow-tasks, --allow-writes,
+         --port <number>, --help, --version
 Chat: /help /status /memory [query] /remember <text> /accept <id>
       /changes /checks /undo /run <script> /exit
 
@@ -52,14 +60,44 @@ async function main(): Promise<void> {
     cwd: { type: 'string' }, json: { type: 'boolean' }, area: { type: 'string' },
     supersedes: { type: 'string' }, package: { type: 'string' },
     'allow-scripts': { type: 'boolean' }, help: { type: 'boolean', short: 'h' }, version: { type: 'boolean' },
+    'allow-tasks': { type: 'boolean' }, 'allow-writes': { type: 'boolean' }, port: { type: 'string' },
+    connect: { type: 'string' },
   } });
   if (args.values.help) { console.log(HELP); return; }
-  if (args.values.version) { console.log('0.1.0'); return; }
-  const command = args.positionals[0] ?? 'chat';
-  const known = ['chat', 'init', 'adopt', 'status', 'remember', 'memory', 'accept', 'ask', 'changes', 'checks', 'undo', 'run', 'export', 'import'];
+  if (args.values.version) { console.log('0.2.0'); return; }
+  const command = args.positionals[0] ?? 'ui';
+  const known = ['ui', 'mcp', 'open', 'config', 'team', 'tasks', 'task', 'chat', 'init', 'adopt', 'status', 'remember', 'memory', 'accept', 'ask', 'changes', 'checks', 'undo', 'run', 'export', 'import'];
   if (!known.includes(command)) throw new Error(`Unknown command: ${command}. Run vibekeep --help.`);
-  const positionalPath = ['chat', 'init', 'adopt'].includes(command) ? args.positionals[1] : undefined;
+  const positionalPath = ['ui', 'mcp', 'chat', 'init', 'adopt'].includes(command) ? args.positionals[1] : undefined;
   const root = realpathSync(resolve(args.values.cwd ?? positionalPath ?? process.cwd()));
+  if (command === 'open' || command === 'config') {
+    const { configFormat, formatConfig, openClient, workspaceServer } = await import('./clients.js');
+    const client = args.positionals[1];
+    if (command === 'open') process.exitCode = await openClient(client, root);
+    else console.log(formatConfig(configFormat(client), workspaceServer(root)));
+    return;
+  }
+  if (command === 'team') {
+    const { teamCommand } = await import('./team-cli.js');
+    return teamCommand(root, args.positionals.slice(1), args.values.port);
+  }
+  if (command === 'ui') {
+    const { WebApplication } = await import('./server.js');
+    const port = args.values.port === undefined ? 4317 : Number(args.values.port);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Port must be an integer from 0 to 65535.');
+    const application = new WebApplication(root);
+    const url = await application.listen(port);
+    console.log(`\nVibeKeep is running locally.\n\n  ${url}\n\nOpen this URL in your browser. Press Ctrl+C to stop the application and its servers.\n`);
+    let stopping = false;
+    const stop = async (): Promise<void> => { if (stopping) return; stopping = true; await application.close(); };
+    process.once('SIGINT', () => { void stop(); }); process.once('SIGTERM', () => { void stop(); });
+    return;
+  }
+  if (command === 'mcp') {
+    if (args.values.connect) { const { startMcpProxy } = await import('./mcp-proxy.js'); await startMcpProxy(args.values.connect, process.env.VIBEKEEP_SERVICE_TOKEN ?? '', process.env.VIBEKEEP_WORKSPACE_ID ?? '', { writes: args.values['allow-writes'], tasks: args.values['allow-tasks'] }); }
+    else { const { startMcp } = await import('./mcp.js'); await startMcp(root, { writes: args.values['allow-writes'], tasks: args.values['allow-tasks'] }); }
+    return;
+  }
   const store = new Store(root);
   let release: (() => void) | undefined;
   let readline: ReturnType<typeof createInterface> | undefined;
@@ -76,7 +114,11 @@ async function main(): Promise<void> {
       const answer = await getReadline().question(`\n${description}\nRun this script? [y/N] `);
       return /^(?:y|yes)$/i.test(answer.trim());
     };
-    if (['init', 'adopt', 'status'].includes(command)) {
+    if (command === 'tasks' || command === 'task') {
+      const { LocalWorkspace } = await import('./workspace.js'); const workspace = new LocalWorkspace(store);
+      try { if (command === 'tasks') print(workspace.tasks()); else print(await workspace.runTask(requireText(), async () => true)); }
+      finally { await workspace.close(); }
+    } else if (['init', 'adopt', 'status'].includes(command)) {
       const value = adopt(store);
       print(value, inventorySummary(value));
     } else if (command === 'remember') {
@@ -98,8 +140,8 @@ async function main(): Promise<void> {
       const value = adopt(store);
       if (command === 'ask') {
         const agent = new Agent(store, configuredModel(), approve, message => { if (!args.values.json) console.error(message); });
-        const result = await agent.turn(requireText());
-        print(result, result.text);
+        try { const result = await agent.turn(requireText()); print(result, result.text); }
+        finally { await agent.workspace.close(); }
         return;
       }
       if (!stdin.isTTY) throw new Error('Interactive chat requires a terminal. Use vibekeep ask "..." or memory commands for non-interactive use.');
@@ -140,6 +182,7 @@ async function main(): Promise<void> {
         } catch (error) { console.error(`VibeKeep: ${(error as Error).message}`); }
         finally { active = undefined; }
       }
+      await agent?.workspace.close();
     }
   } finally { readline?.close(); release?.(); store.close(); }
 }

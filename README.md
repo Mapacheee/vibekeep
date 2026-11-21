@@ -1,176 +1,79 @@
 # VibeKeep
 
-**Build freely. Keep the context.**
+VibeKeep gives AI chats a persistent memory for each project. Open your usual coding assistant in a project folder, record a decision, and pick it up in the next chat. Teammates using different assistants can share decisions, see overlapping work, and leave each other handoffs.
 
-A vibe coding framework with a terminal chat and local project memory. Talk, change your mind, and keep building; VibeKeep preserves decisions and records its changes.
+VibeKeep works with source code, design assets, documents, and mixed workspaces. Git adds branch-specific memory and isolated worktrees. A folder of files is enough to get started.
 
-VibeKeep's intended scope includes any accessible AI-assisted creation environment: code in any language, visual design, documents, notebooks, and mixed projects. The core is being designed around workspace and capability adapters. The current release is the local CLI implementation described below, with text-file tools and npm execution; broader native integrations are planned in the [environment-agnostic architecture plan](docs/environment-agnostic-plan.md). Node.js is VibeKeep's runtime requirement, not a required technology for the projects it works on.
+## Install from source
 
-This is the first working release, **0.1.0**. It can adopt an existing repository, chat with a model, read and edit files, run authorized npm scripts, and restore memory in another session. You do not need to write a specification to get started.
+Install Node.js **24.13 or later** and the chat client you want to use. From a terminal:
 
-## Getting started
-
-Requirements: **Node.js 24.13 or later**, npm, and Git for repository features. The stack has been tested locally with Node 24.19 on Windows, with CI on Windows and Linux. Use a compatible LTS release.
-
-```bash
+```sh
 git clone https://github.com/Mapacheee/vibekeep.git
 cd vibekeep
 npm ci
 npm run build
+npm link
 ```
 
-Inspect another project without configuring a model or making network requests:
+## Start in your project
 
-```bash
-node dist/src/cli.js adopt /path/to/your/project
-node dist/src/cli.js remember "Keep the current navigation" --cwd /path/to/your/project --area ui.navigation
-node dist/src/cli.js memory navigation --cwd /path/to/your/project
+Run these commands in the folder containing your work. This example uses Claude Code.
+
+```sh
+cd /path/to/your/project
+vibekeep init
+vibekeep remember "Deliver print assets as PDF/A." --area export
+vibekeep open claude
 ```
 
-On Windows, quote paths when needed, for example `"C:\projects\my-app"`.
+In the chat, ask **“Check VibeKeep for our export decision, then inspect the project for files that need updating.”** A new chat connected to the same working copy can retrieve the same decision. The external client supplies the model and applies its own account and usage limits. VibeKeep's memory service runs locally without a model key.
 
-To make the command available from any directory, optionally run `npm link` inside this repository. Then enter your project directory and run:
+### Choose your client
 
-```bash
-vibekeep
+| Client | Launch from the project folder | Connection |
+| --- | --- | --- |
+| Claude Code | `vibekeep open claude` | Adds VibeKeep to this Claude session with `--mcp-config`. |
+| OpenCode | `vibekeep open opencode` | Adds a local MCP server to the project's OpenCode configuration. The launcher detects the installed major version. |
+| Google Antigravity CLI | `vibekeep open antigravity` | Adds the server to `.agents/mcp_config.json` and starts `agy`. |
+| Codex CLI | `vibekeep open codex` | Supplies the MCP configuration for this invocation. |
+
+To configure a client manually, run `vibekeep config <client>` in the working copy. For Antigravity CLI, open the project and check the connection from `/mcp`. In Antigravity IDE, use **MCP Servers → Manage MCP Servers → View raw config** to merge the generated `vibekeep` entry, then refresh the server list. For OpenCode 1.x, use `vibekeep config opencode-v1`. Generated entries include absolute paths for this machine and working copy. Review them before sharing client configuration. [Claude Code MCP](https://code.claude.com/docs/en/mcp) · [OpenCode MCP](https://opencode.ai/docs/mcp-servers) · [Antigravity MCP](https://antigravity.google/docs/mcp?app=cli) · [Codex MCP](https://developers.openai.com/codex/mcp)
+
+## Work with a team
+
+**Host the project.** In a persistent directory on one machine, run `vibekeep team serve`. In another terminal in that same directory, run `vibekeep team invite Ana` for each member, using their name. Send each person their own credential privately. The coordinator keeps its state across restarts in that directory.
+
+**Join from a working copy.** Set `VIBEKEEP_TEAM_TOKEN` to your credential and run the following commands in your checkout. For two machines, forward port 4318 with `ssh -N -L 4318:127.0.0.1:4318 user@team-host`, or use the HTTPS address of your coordinator.
+
+```sh
+vibekeep team join http://127.0.0.1:4318
+vibekeep team opencode
 ```
 
-Without a global installation, open the same chat with:
+You can unset the environment variable after joining. Each member can choose any client in the table. For another task on the same machine, `vibekeep team worktree export-pdf ../project-export` creates a Git branch and a joined working copy from committed HEAD. For a design project outside Git, join from separate working folders and declare the resources each person intends to edit.
 
-```bash
-node dist/src/cli.js --cwd /path/to/your/project
-```
+**Coordinate in the chat.** Ask your assistant to claim a task and list the files or design resources it plans to change. If someone claims the same resource or a parent folder, both chats can retrieve an overlap warning. Leave a message on the other task or record a handoff before closing your chat. Open a new chat in the same copy to recover the assignment, recent messages, and shared decisions. The coordinator shares task records and resource names. Chat transcripts stay with their respective clients.
 
-## Model configuration
+Use `vibekeep team status` to inspect the board. The coordinator operator can confirm a proposed team decision with `vibekeep team accept <decision-id>` or revoke a credential with `vibekeep team revoke <name>`. Overlap warnings are advisory. Review and integrate edits through your usual Git or design workflow.
 
-The chat uses the provider you configure. It needs a model with **tool calling** to edit files and use tools. Memory, repository adoption, and local commands work without a model.
+## Local workspace
 
-### Compatible endpoint, including a local server
+Run `vibekeep ui` and open the local URL printed in the terminal. Browse files, preview assets, inspect memory, run registered tasks, or review changes. To connect an external client while the GUI owns the same working copy, choose **Workspace actions → Connect external agent**, select your client, and use the generated session configuration.
 
-PowerShell:
+The built-in chat supports Anthropic and OpenAI-compatible endpoints, including local models with tool calling. Configure the model in the GUI or set the variables shown in [.env.example](.env.example) for `vibekeep chat`. Store your credentials outside version control.
 
-```powershell
-$env:VIBEKEEP_PROVIDER = "compatible"
-$env:VIBEKEEP_BASE_URL = "http://localhost:1234/v1"
-$env:VIBEKEEP_MODEL = "your-tool-capable-model-id"
-# Only if your provider requires authentication:
-$env:VIBEKEEP_API_KEY = "your-key"
-node dist/src/cli.js --cwd "C:\projects\my-app"
-```
+| Command | Use |
+| --- | --- |
+| `vibekeep status` | Inspect the current files and detected changes. |
+| `vibekeep memory [query]` | Find decisions for this branch or working folder. |
+| `vibekeep accept <id>` | Confirm a local decision proposed by an agent. |
+| `vibekeep changes` / `vibekeep undo` | Review VibeKeep's own edits or restore its latest edit if the file still matches. |
+| `vibekeep tasks` / `vibekeep checks` | List available tasks or inspect recorded verification results. |
+| `vibekeep export` / `vibekeep import <file>` | Transfer decision memory between copies of the same project. |
 
-macOS/Linux:
+Use `--cwd <directory>` to target another folder. Run `vibekeep --help` or `vibekeep team help` for the full command list. Project identity and local state are stored under `.vibe/`. The private database and team credentials live in its ignored `local/` directory.
 
-```bash
-export VIBEKEEP_PROVIDER=compatible
-export VIBEKEEP_BASE_URL=http://localhost:1234/v1
-export VIBEKEEP_MODEL=your-tool-capable-model-id
-# export VIBEKEEP_API_KEY=your-key
-node dist/src/cli.js --cwd /path/to/your/project
-```
+## Development
 
-This endpoint is a configuration example: VibeKeep does not install or start that model server. For a remote provider, use its endpoint and credentials.
-
-### Anthropic
-
-Set `VIBEKEEP_PROVIDER=anthropic`, `VIBEKEEP_MODEL` to the model ID, and `VIBEKEEP_API_KEY` to your key. `VIBEKEEP_BASE_URL` is not used in this mode.
-
-You can also load a private environment file through Node:
-
-```bash
-node --env-file=/private/path/vibekeep.env dist/src/cli.js --cwd /path/to/project
-```
-
-VibeKeep does not automatically load the application's `.env` file or store provider keys in memory. Selected project context is sent to your configured provider. Agent responses, generated documentation, and decision summaries use English.
-
-## Example session
-
-```text
-You › Review this application and add a favorites button.
-→ list_files
-→ read_file
-→ edit_file
-VibeKeep › I added the button. I can run the verification script…
-
-You › I like the light theme; keep it for mobile.
-→ propose_decision
-
-You › /memory
-[proposed] Keep the light theme for mobile
-  <full-id> · ui.mobile
-
-You › /accept <full-id>
-You › /changes
-You › /undo
-You › /exit
-```
-
-This dialogue is illustrative; tool selection depends on the model. When you return, VibeKeep rebuilds context from decisions and recent messages on the same branch, then inspects the code again.
-
-The agent can propose memories automatically with a quote from the current message. In this version, **accepting** a decision is an explicit action through `/accept` or `/remember`; the model cannot claim your confirmation. Proposals remain available as provisional context without requiring you to resolve them before continuing.
-
-## Commands
-
-| Command | Purpose |
-|---|---|
-| `vibekeep` or `vibekeep chat [path]` | Initialize if needed and open the chat. |
-| `vibekeep init [path]` / `vibekeep adopt [path]` | Inspect and save an inventory without installing or running the project. |
-| `vibekeep status` | Detect the stack and changes since the previous inspection. |
-| `vibekeep remember "text" --area ui.theme` | Record an explicitly accepted decision. |
-| `vibekeep memory [query]` | Search current decisions on this branch. |
-| `vibekeep accept <id> --supersedes <previous-id>` | Accept a proposal and optionally replace another decision. |
-| `vibekeep ask "request"` | Run one turn without opening an interactive chat. |
-| `vibekeep changes` | List recorded file writes and whether their contents still match. |
-| `vibekeep undo` | Revert the most recent own write if the file still matches. |
-| `vibekeep run test` | Explicitly run the npm `test` script. |
-| `vibekeep checks` | Show script results and whether they still match the current code. |
-| `vibekeep export` | Print decision memory as JSON, without the conversation. |
-| `vibekeep import memory.json` | Import same-project memory without duplicating IDs. |
-
-All commands accept `--cwd <path>`. `--json` produces structured output for non-interactive commands. `--help` lists all options.
-
-Inside the chat: `/status`, `/memory [query]`, `/remember <text>`, `/accept <id>`, `/changes`, `/checks`, `/undo`, `/run <script>`, `/help`, and `/exit`. The chat and CLI use the same data.
-
-## Execution and files
-
-- Adoption reads project files and writes metadata only inside `.vibe/`.
-- Exclusions cover `.git`, `.vibe`, dependencies, generated output, `.env` files, recognized key extensions, databases, and logs. This is not a universal secret detector: review project contents before using a remote provider.
-- Git repositories respect Git exclusions, including direct file reads. Without Git, root and nested `.gitignore` files are applied conservatively: nested rules cannot override an ancestor's exclusion.
-- Symlinks are skipped. Inventory limits are 5,000 text files, 256 KiB per file, and 32 MiB in total. Partial scans are identified.
-- Model file reads are paginated. Edits require the current file hash and save previous contents; partial replacements require a unique match.
-- `/undo` reverts one write at a time and stops if later edits are detected. It does not reverse script effects, databases, or external services. Preconditions reduce conflicts but do not lock other editors at the filesystem level.
-- Scripts run with local user permissions. VibeKeep is not a sandbox. The agent requests authorization before running scripts; `--allow-scripts` authorizes them for the session. `vibekeep run` and `/run` are explicit execution requests.
-- Scripts have time and output limits. **The process is stopped when its time limit expires**: this version does not manage persistent development servers. Start the server in another terminal to preview changes while chatting.
-- Other package managers are detected, but automatic execution initially supports npm. VibeKeep does not replace lockfiles or automatically install dependencies.
-
-## Memory and privacy
-
-```text
-your-project/
-  .vibe/
-    project.json          # Project identity
-    .gitignore            # Excludes local/ from Git
-    local/
-      memory.sqlite       # Conversation, decisions, inventory, and action journal
-      session.lock        # Prevents simultaneous CLI writers
-```
-
-The database uses SQLite with WAL and FTS5. Decisions are scoped by branch, with explicit provenance and authority. Superseded decisions retain their history and are omitted from current retrieval. Script results are linked to the inventory fingerprint; `checks` marks them out of date when that fingerprint changes.
-
-Local data is **not encrypted**. Excluding `local/` prevents its normal inclusion in Git; preserve those exclusion rules. Do not copy an active SQLite database as an isolated file. To share decisions, use `export`, review its contents, and save the result outside `local/`. Imports require the same project identity and do not resolve semantic divergence between shared decisions.
-
-After an interruption, uncertain actions remain visible and are not replayed automatically. This version does not yet reconcile all their effects automatically. Independent worktrees have separate local stores; coordination between them is planned.
-
-## Development and verification
-
-```bash
-npm ci
-npm run check
-npm test
-npm start -- --help
-```
-
-Tests use temporary repositories and files, real SQLite memory, and a simulated provider transport to exercise the tool loop without keys, API usage, or external connections. Coverage includes persistence, branch isolation, import, decision replacement, script failures, stale evidence, and preserving later edits during undo. The symlink test is skipped when the environment cannot create symlinks.
-
-A real-provider chat needs a manual test with your credentials; simulated tests do not evaluate model quality.
-
-See [the architecture](docs/architecture.md) and [the roadmap](docs/roadmap.md) for implemented features and upcoming work. No npm package has been published.
+Run `npm run check` for type checking and `npm test` for automated tests. For the browser suite, install Chromium with `npx playwright install chromium` and run `npm run test:browser`. The [design](examples/design) and [Java](examples/java) projects are small workspaces for trying VibeKeep.

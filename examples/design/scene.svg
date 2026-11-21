@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="420" viewBox="0 0 800 420" role="img" aria-labelledby="title">
+  <title id="title">Three shapes</title>
+  <rect id="background" width="800" height="420" fill="#f5f6f4"/>
+  <rect id="accent" x="100" y="140" width="140" height="140" fill="#427960"/>
+  <circle id="circle" cx="400" cy="210" r="70" fill="#6f8496"/>
+  <path id="triangle" d="M630 140 L700 280 H560 Z" fill="#c4a473"/>
+</svg>

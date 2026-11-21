@@ -1,14 +1,17 @@
 {
   "name": "vibekeep",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Build freely. Keep the context. A local, memory-first AI coding framework.",
+  "description": "Project memory and team coordination for AI-assisted work.",
   "type": "module",
   "bin": {
     "vibekeep": "dist/src/cli.js"
   },
   "files": [
     "dist/src",
+    "ui",
+    "examples",
+    ".env.example",
     "README.md"
   ],
   "engines": {
@@ -18,6 +21,7 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test dist/test/*.test.js",
+    "test:browser": "npm run build && node --test dist/test/browser/*.e2e.js",
     "start": "node dist/src/cli.js",
     "dev": "npm run build && node dist/src/cli.js"
   },
@@ -28,11 +32,18 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.105",
     "@ai-sdk/openai-compatible": "^3.0.92",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@xmldom/xmldom": "^0.9.12",
     "ai": "^7.0.173",
+    "ajv": "^8.20.0",
+    "cross-spawn": "^7.0.6",
     "ignore": "^7.0.14",
+    "jsonc-parser": "^3.3.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/cross-spawn": "^6.0.6",
     "@types/node": "^24.19.2",
     "typescript": "^7.0.2"
   }

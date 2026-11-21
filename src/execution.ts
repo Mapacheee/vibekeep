@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import crossSpawn from 'cross-spawn';
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { accessiblePath, hash, projectPath } from './paths.js';
 import { adopt, branch } from './repo.js';
@@ -12,6 +13,7 @@ export class Executor {
   replace(path: string, oldText: string, newText: string, expectedHash: string): { actionId: string; hash: string } {
     if (!oldText) throw new Error('The text to replace cannot be empty.');
     const full = accessiblePath(this.store.root, path);
+    if (statSync(full).size > 256 * 1024) throw new Error('Only bounded text files can be edited.');
     const bytes = readFileSync(full);
     if (bytes.length > 256 * 1024 || bytes.includes(0)) throw new Error('Only bounded text files can be edited.');
     const content = bytes.toString('utf8');
@@ -22,7 +24,7 @@ export class Executor {
 
   checks(): { id: string; status: string; current: boolean; result: unknown }[] {
     const inventory = adopt(this.store);
-    return this.store.db.prepare("SELECT * FROM actions WHERE scope = ? AND kind = 'script.run' ORDER BY rowid DESC LIMIT 10").all(inventory.branch).map(row => {
+    return this.store.db.prepare("SELECT * FROM actions WHERE scope = ? AND kind IN ('script.run', 'task.run') ORDER BY rowid DESC LIMIT 10").all(inventory.branch).map(row => {
       const payload = JSON.parse(String(row.payload)) as { fingerprint: string };
       const result = row.result ? JSON.parse(String(row.result)) as { stale?: boolean } : null;
       return { id: String(row.id), status: String(row.status), current: payload.fingerprint === inventory.fingerprint && !result?.stale, result };
@@ -32,6 +34,7 @@ export class Executor {
   write(path: string, content: string, expectedHash: string | null): { actionId: string; hash: string } {
     if (Buffer.byteLength(content) > 256 * 1024) throw new Error('Write exceeds the 256 KiB limit.');
     const full = accessiblePath(this.store.root, path);
+    if (existsSync(full) && statSync(full).size > 256 * 1024) throw new Error('Existing file exceeds the snapshot limit.');
     const before = existsSync(full) ? readFileSync(full) : null;
     if (before && before.length > 256 * 1024) throw new Error('Existing file exceeds the snapshot limit.');
     if (before?.includes(0)) throw new Error('Cannot overwrite a binary file.');
@@ -46,6 +49,7 @@ export class Executor {
       if (actual !== beforeHash) throw new Error('Concurrent edit detected; no write was applied.');
       writeFileSync(full, content, { flag: before === null ? 'wx' : 'w' });
       this.store.finish(id, 'succeeded', { afterHash });
+      this.store.event('artifact.updated', branch(this.store.root), { path, actionId: id, revision: afterHash });
       return { actionId: id, hash: afterHash };
     } catch (error) {
       this.store.finish(id, 'unknown', { error: error instanceof Error ? error.message : String(error) });
@@ -53,9 +57,11 @@ export class Executor {
     }
   }
 
-  undo(): string {
+  undo(actionId?: string): string {
     const scope = branch(this.store.root);
-    const row = this.store.db.prepare("SELECT * FROM actions WHERE scope = ? AND kind = 'file.write' AND status = 'succeeded' ORDER BY rowid DESC LIMIT 1").get(scope);
+    const row = actionId
+      ? this.store.db.prepare("SELECT * FROM actions WHERE id = ? AND scope = ? AND kind = 'file.write' AND status = 'succeeded'").get(actionId, scope)
+      : this.store.db.prepare("SELECT * FROM actions WHERE scope = ? AND kind = 'file.write' AND status = 'succeeded' ORDER BY rowid DESC LIMIT 1").get(scope);
     if (!row) throw new Error('No successful file change to undo on this branch.');
     const data = JSON.parse(String(row.payload)) as { path: string; before: string | null; beforeHash: string | null; afterHash: string };
     const full = projectPath(this.store.root, data.path);
@@ -85,6 +91,32 @@ export class Executor {
       try { currentMatches = hash(readFileSync(projectPath(this.store.root, data.path))) === data.afterHash; } catch { /* absent */ }
       return { path: data.path, actionId: String(row.id), currentMatches, beforeHash: data.beforeHash, afterHash: data.afterHash };
     });
+  }
+
+  diff(actionId: string): { path: string; before: string; after: string; currentMatches: boolean } {
+    const row = this.store.db.prepare("SELECT * FROM actions WHERE id = ? AND scope = ? AND kind = 'file.write'").get(actionId, branch(this.store.root));
+    if (!row) throw new Error('File change not found.');
+    const data = JSON.parse(String(row.payload)) as { path: string; before: string | null; afterHash: string };
+    const path = projectPath(this.store.root, data.path);
+    const after = existsSync(path) ? readFileSync(path, 'utf8') : '';
+    return { path: data.path, before: data.before ? Buffer.from(data.before, 'base64').toString('utf8') : '', after, currentMatches: hash(after) === data.afterHash };
+  }
+
+  discardExperiment(id: string): void {
+    const scope = branch(this.store.root);
+    const experiment = this.store.db.prepare("SELECT * FROM experiments WHERE id = ? AND scope = ? AND status = 'active'").get(id, scope);
+    if (!experiment) throw new Error('Active experiment not found in this scope.');
+    const rows = this.store.db.prepare("SELECT a.* FROM actions a JOIN experiment_actions e ON e.action_id = a.id WHERE e.experiment_id = ? AND a.kind = 'file.write' AND a.status = 'succeeded' ORDER BY a.rowid DESC").all(id);
+    const simulated = new Map<string, string | null>();
+    for (const row of rows) {
+      const data = JSON.parse(String(row.payload)) as { path: string; beforeHash: string | null; afterHash: string };
+      let actual = simulated.get(data.path);
+      if (!simulated.has(data.path)) { const full = projectPath(this.store.root, data.path); actual = existsSync(full) ? hash(readFileSync(full)) : null; }
+      if (actual !== data.afterHash) throw new Error(`Experiment has conflicting later edits in ${data.path}. No changes were reverted.`);
+      simulated.set(data.path, data.beforeHash);
+    }
+    for (const row of rows) this.undo(String(row.id));
+    this.store.finishExperiment(id, scope, 'discarded');
   }
 
   async runScript(script: string, manifest = 'package.json', timeoutMs = 60000, approve: (description: string) => Promise<boolean> = async () => false, signal?: AbortSignal): Promise<CommandResult> {
@@ -125,7 +157,7 @@ export class Executor {
 export async function runProcess(command: string, args: string[], cwd: string, timeoutMs: number, env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal): Promise<CommandResult> {
   if (signal?.aborted) throw new Error('Process cancelled.');
   return new Promise((resolveResult, reject) => {
-    const child = spawn(command, args, { cwd, env, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = crossSpawn(command, args, { cwd, env, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     let timedOut = false;
     let cancelled = false;
@@ -138,8 +170,8 @@ export async function runProcess(command: string, args: string[], cwd: string, t
       }
       else truncated = true;
     };
-    child.stdout.on('data', collect);
-    child.stderr.on('data', collect);
+    child.stdout!.on('data', collect);
+    child.stderr!.on('data', collect);
     const stop = (): void => {
       if (!child.pid) return;
       if (process.platform === 'win32') {
